@@ -1,48 +1,54 @@
-// Seed a demo business so you can explore the app immediately.
+// Seed a demo rep with contacts and deals so you can explore the app instantly.
 // Usage: npm run seed   (then log in with the printed credentials)
-import { db } from '../src/db.js';
+import { db, DEFAULT_STAGES } from '../src/db.js';
 import { config } from '../src/config.js';
 import { hashPassword } from '../src/lib/auth.js';
-import { uniqueSlug } from '../src/lib/slug.js';
 
-const EMAIL = 'demo@agendapro.app';
+const EMAIL = 'demo@pipesolo.app';
 const PASSWORD = 'demo1234';
 
-const existing = db.prepare('SELECT * FROM businesses WHERE owner_email = ?').get(EMAIL);
+const existing = db.prepare('SELECT * FROM reps WHERE email = ?').get(EMAIL);
 if (existing) {
   console.log('Demo já existe. Login:', EMAIL, '/', PASSWORD);
-  console.log('Página de agendamento:', `${config.appUrl}/book/${existing.slug}`);
+  console.log('Painel:', `${config.appUrl}/dashboard`);
   process.exit(0);
 }
 
-const trialEnds = new Date(Date.now() + config.trialDays * 86400000).toISOString();
-const slug = uniqueSlug('Salão Demonstração');
+const daysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString();
 
 const tx = db.transaction(() => {
-  const info = db
-    .prepare(
-      `INSERT INTO businesses (name, slug, owner_email, password_hash, trial_ends_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    )
-    .run('Salão Demonstração', slug, EMAIL, hashPassword(PASSWORD), trialEnds);
-  const bid = info.lastInsertRowid;
+  const rep = db
+    .prepare('INSERT INTO reps (name, email, password_hash, trial_ends_at) VALUES (?, ?, ?, ?)')
+    .run('Maria Vendas', EMAIL, hashPassword(PASSWORD), daysFromNow(config.trialDays));
+  const rid = rep.lastInsertRowid;
 
-  const svc = db.prepare(
-    'INSERT INTO services (business_id, name, duration_min, price_cents) VALUES (?, ?, ?, ?)',
-  );
-  svc.run(bid, 'Corte de cabelo', 30, 5000);
-  svc.run(bid, 'Barba', 20, 3000);
-  svc.run(bid, 'Corte + Barba', 50, 7000);
+  const insStage = db.prepare('INSERT INTO stages (rep_id, name, position, kind) VALUES (?, ?, ?, ?)');
+  DEFAULT_STAGES.forEach((s, i) => insStage.run(rid, s.name, i, s.kind));
+  const stages = db.prepare('SELECT * FROM stages WHERE rep_id = ? ORDER BY position').all(rid);
+  const stageByName = Object.fromEntries(stages.map((s) => [s.name, s.id]));
 
-  const hrs = db.prepare(
-    'INSERT INTO availability (business_id, weekday, start_time, end_time) VALUES (?, ?, ?, ?)',
+  const insContact = db.prepare(
+    'INSERT INTO contacts (rep_id, name, company, email, phone) VALUES (?, ?, ?, ?, ?)',
   );
-  for (const wd of [1, 2, 3, 4, 5, 6]) hrs.run(bid, wd, '09:00', '18:00');
-  return slug;
+  const c1 = insContact.run(rid, 'João Almeida', 'ACME Distribuidora', 'joao@acme.com', '(11) 99999-0001').lastInsertRowid;
+  const c2 = insContact.run(rid, 'Patrícia Lima', 'Lima Comércio', 'patricia@lima.com', '(11) 99999-0002').lastInsertRowid;
+  const c3 = insContact.run(rid, 'Ricardo Souza', 'RS Atacado', 'ricardo@rs.com', '(11) 99999-0003').lastInsertRowid;
+
+  const insDeal = db.prepare(
+    `INSERT INTO deals (rep_id, contact_id, title, value_cents, stage_id, next_action, next_action_at, last_activity_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  // Overdue scheduled action → shows as "due" in the Hoje queue.
+  insDeal.run(rid, c1, 'Pedido recorrente — 200 un.', 480000, stageByName['Proposta'], 'Enviar proposta revisada', daysFromNow(-2), daysFromNow(-2));
+  // No next action + old activity → shows as "cold".
+  insDeal.run(rid, c2, 'Primeiro pedido — linha nova', 150000, stageByName['Qualificado'], null, null, daysFromNow(-6));
+  // Future action → not in the queue yet.
+  insDeal.run(rid, c3, 'Renovação anual', 920000, stageByName['Negociação'], 'Ligar para fechar', daysFromNow(2), daysFromNow(-1));
+  // Fresh lead.
+  insDeal.run(rid, null, 'Lead do site', 0, stageByName['Novo lead'], null, null, daysFromNow(0));
 });
 
-const createdSlug = tx();
+tx();
 console.log('✅ Demo criada!');
 console.log('   Login:', EMAIL, '/', PASSWORD);
 console.log('   Painel:', `${config.appUrl}/dashboard`);
-console.log('   Agendamento público:', `${config.appUrl}/book/${createdSlug}`);

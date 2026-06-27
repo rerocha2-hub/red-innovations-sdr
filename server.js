@@ -5,11 +5,11 @@ import { config, ROOT } from './src/config.js';
 import './src/db.js'; // initialize schema on boot
 
 import authRoutes from './src/routes/auth.js';
-import serviceRoutes from './src/routes/services.js';
-import availabilityRoutes from './src/routes/availability.js';
-import appointmentRoutes from './src/routes/appointments.js';
-import publicRoutes from './src/routes/public.js';
+import contactRoutes from './src/routes/contacts.js';
+import dealRoutes from './src/routes/deals.js';
+import pipelineRoutes from './src/routes/pipeline.js';
 import billingRoutes from './src/routes/billing.js';
+import digestRoutes from './src/routes/digest.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -22,22 +22,20 @@ app.use(cookieParser());
 
 // --- API ---
 app.use('/api/auth', authRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/availability', availabilityRoutes);
-app.use('/api/appointments', appointmentRoutes);
-app.use('/api/public', publicRoutes);
+app.use('/api/contacts', contactRoutes);
+app.use('/api/deals', dealRoutes);
+app.use('/api/pipeline', pipelineRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/digest', digestRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+// Avoid a noisy 404 for the browser's automatic favicon request.
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // --- Static frontend ---
 const PUBLIC_DIR = path.join(ROOT, 'public');
 app.use(express.static(PUBLIC_DIR));
-
-// Pretty URL for the public booking page: /book/:slug
-app.get('/book/:slug', (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'book.html'));
-});
 
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'dashboard.html'));
@@ -58,7 +56,7 @@ export { app };
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   app.listen(config.port, () => {
-    console.log(`\n🚀 AgendaPro rodando em ${config.appUrl}`);
+    console.log(`\n🚀 PipeSolo rodando em ${config.appUrl}`);
     console.log(`   Stripe: ${config.stripe.enabled ? 'ativo' : 'modo simulação (stub)'}`);
     console.log(`   SMTP:   ${config.smtp.enabled ? 'ativo' : 'modo simulação (console)'}\n`);
   });

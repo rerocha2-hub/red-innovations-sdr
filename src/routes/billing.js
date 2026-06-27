@@ -10,13 +10,13 @@ import {
 const router = Router();
 
 router.get('/status', requireAuth, (req, res) => {
-  res.json({ stripeEnabled: billingEnabled, planStatus: req.business.plan_status });
+  res.json({ stripeEnabled: billingEnabled, planStatus: req.rep.plan_status });
 });
 
 // Start a subscription checkout (real Stripe or local stub).
 router.post('/checkout', requireAuth, async (req, res) => {
   try {
-    const { url, stub } = await createCheckout(req.business);
+    const { url, stub } = await createCheckout(req.rep);
     res.json({ url, stub });
   } catch (err) {
     console.error('checkout error', err);

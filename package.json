@@ -1,7 +1,7 @@
 {
-  "name": "agendapro",
+  "name": "pipesolo",
   "version": "1.0.0",
-  "description": "AgendaPro - Micro-SaaS de agendamento para pequenos negócios (clínicas, salões, restaurantes).",
+  "description": "PipeSolo - CRM e pipeline para representantes comerciais solo. Foco em follow-up automático e registro em 1 toque.",
   "type": "module",
   "main": "server.js",
   "scripts": {

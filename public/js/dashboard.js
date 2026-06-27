@@ -1,236 +1,345 @@
 import { api, money } from '/js/api.js';
 
-const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 let me = null;
+let stages = [];
+let contacts = [];
 
-function fmtWhen(iso) {
-  return new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
+const $ = (id) => document.getElementById(id);
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
+  );
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+function tomorrowStr() {
+  const d = new Date(Date.now() + 86400000);
+  return d.toISOString().slice(0, 10);
 }
 
+/* ---------------- Modal ---------------- */
+function openModal(title, bodyHtml) {
+  $('modal-title').textContent = title;
+  $('modal-body').innerHTML = bodyHtml;
+  $('modal-backdrop').classList.remove('hidden');
+}
+function closeModal() {
+  $('modal-backdrop').classList.add('hidden');
+  $('modal-body').innerHTML = '';
+}
+$('modal-close').addEventListener('click', closeModal);
+$('modal-backdrop').addEventListener('click', (e) => {
+  if (e.target === $('modal-backdrop')) closeModal();
+});
+
+/* ---------------- Bootstrap ---------------- */
 async function loadMe() {
-  try {
-    me = await api('/api/auth/me');
-  } catch {
-    window.location.href = '/login.html';
-    return;
-  }
-  document.getElementById('biz-name').textContent = me.name;
-  document.getElementById('booking-url').textContent = me.bookingUrl;
-  document.getElementById('view-booking').href = me.bookingUrl;
+  try { me = await api('/api/auth/me'); }
+  catch { window.location.href = '/login.html'; return; }
+  $('rep-name').textContent = `Olá, ${me.name.split(' ')[0]} 👋`;
 
   const trial = new Date(me.trialEndsAt);
-  let planLine = '';
-  if (me.planStatus === 'active') planLine = '✓ Assinatura ativa';
-  else if (me.planStatus === 'trialing' && me.subscriptionActive) {
+  let line = '';
+  if (me.planStatus === 'active') line = '✓ Assinatura ativa';
+  else if (me.subscriptionActive) {
     const days = Math.ceil((trial - Date.now()) / 86400000);
-    planLine = `Teste grátis — ${days} dia(s) restante(s)`;
-  } else planLine = '⚠ Período de teste encerrado';
-  document.getElementById('plan-line').textContent = planLine;
+    line = `Teste grátis — ${days} dia(s) restante(s)`;
+  } else line = '⚠ Período de teste encerrado';
+  $('plan-line').textContent = line;
 
   if (!me.subscriptionActive) {
-    document.getElementById('banner').innerHTML =
-      '<div class="alert warn">Seu período de teste acabou. Assine para voltar a receber agendamentos. Veja a aba <strong>Assinatura</strong>.</div>';
+    $('banner').innerHTML =
+      '<div class="alert warn">Seu período de teste acabou. Assine para continuar — veja a aba <strong>Assinatura</strong>.</div>';
   }
 }
 
 async function loadStats() {
-  const s = await api('/api/appointments/stats/summary');
-  document.getElementById('stat-upcoming').textContent = s.upcoming;
-  document.getElementById('stat-total').textContent = s.total;
-  document.getElementById('stat-revenue').textContent = money(s.revenueCents);
+  const s = await api('/api/deals/stats/summary');
+  $('stat-follow').textContent = s.needFollowUp;
+  $('stat-open').textContent = s.openCount;
+  $('stat-value').textContent = money(s.openValueCents);
+  $('stat-won').textContent = money(s.wonThisMonthCents);
 }
 
-async function loadAppointments() {
-  const rows = await api('/api/appointments');
-  const body = document.getElementById('appts-body');
-  const table = document.getElementById('appts-table');
-  const empty = document.getElementById('appts-empty');
-  body.innerHTML = '';
-  if (!rows.length) {
-    table.classList.add('hidden');
-    empty.classList.remove('hidden');
-    return;
-  }
+/* ---------------- Hoje (follow-up queue) ---------------- */
+async function loadToday() {
+  const queue = await api('/api/deals/followup');
+  const list = $('today-list');
+  const empty = $('today-empty');
+  list.innerHTML = '';
+  if (!queue.length) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
-  table.classList.remove('hidden');
-  for (const a of rows) {
-    const tr = document.createElement('tr');
-    const contact = a.customer_email || a.customer_phone || '—';
-    tr.innerHTML = `
-      <td>${fmtWhen(a.starts_at)}</td>
-      <td>${escapeHtml(a.customer_name)}</td>
-      <td>${escapeHtml(a.service_name)}</td>
-      <td>${escapeHtml(contact)}</td>
-      <td><span class="tag ${a.status}">${a.status === 'confirmed' ? 'Confirmado' : 'Cancelado'}</span></td>
-      <td>${a.status === 'confirmed' ? `<button class="btn danger sm" data-cancel="${a.id}">Cancelar</button>` : ''}</td>`;
-    body.appendChild(tr);
+
+  for (const d of queue) {
+    const badge = d.reason === 'due'
+      ? `<span class="badge due">⏰ ação atrasada ${d.overdueDays}d</span>`
+      : `<span class="badge cold">❄️ esfriando há ${d.overdueDays}d</span>`;
+    const who = [d.contact_name, d.contact_company].filter(Boolean).join(' · ') || 'Sem contato';
+    const next = d.next_action
+      ? `<div class="next">👉 <strong>${escapeHtml(d.next_action)}</strong>${d.next_action_at ? ` (${fmtDate(d.next_action_at)})` : ''}</div>`
+      : '<div class="next muted">Sem próximo passo definido</div>';
+    const card = document.createElement('div');
+    card.className = 'follow-card';
+    card.innerHTML = `
+      <div>
+        <div class="title">${escapeHtml(d.title)} ${badge}</div>
+        <div class="sub">${escapeHtml(who)} · ${money(d.value_cents)} · ${escapeHtml(d.stage_name)}</div>
+        ${next}
+      </div>
+      <div class="follow-actions">
+        <button class="btn sm" data-log="${d.id}">Registrar contato</button>
+        <button class="btn secondary sm" data-win="${d.id}">Ganhou</button>
+        <button class="btn ghost sm" data-lost="${d.id}">Perdeu</button>
+      </div>`;
+    list.appendChild(card);
   }
-  body.querySelectorAll('[data-cancel]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Cancelar este agendamento?')) return;
-      await api(`/api/appointments/${btn.dataset.cancel}/cancel`, { method: 'PATCH' });
-      await Promise.all([loadAppointments(), loadStats()]);
+  list.querySelectorAll('[data-log]').forEach((b) =>
+    b.addEventListener('click', () => openActivityModal(b.dataset.log)));
+  list.querySelectorAll('[data-win]').forEach((b) =>
+    b.addEventListener('click', () => moveToKind(b.dataset.win, 'won')));
+  list.querySelectorAll('[data-lost]').forEach((b) =>
+    b.addEventListener('click', () => moveToKind(b.dataset.lost, 'lost')));
+}
+
+async function moveToKind(dealId, kind) {
+  const stage = stages.find((s) => s.kind === kind);
+  if (!stage) return;
+  await api(`/api/deals/${dealId}/stage`, { method: 'PATCH', body: { stage_id: stage.id } });
+  await refreshAll();
+}
+
+/* ---------------- Activity logging modal ---------------- */
+function openActivityModal(dealId) {
+  const types = [
+    ['call', '📞 Ligação'], ['whatsapp', '💬 WhatsApp'], ['email', '✉️ E-mail'],
+    ['meeting', '🤝 Reunião'], ['note', '📝 Nota'],
+  ];
+  openModal('Registrar contato', `
+    <label>Tipo de interação</label>
+    <div class="act-types" id="act-types">
+      ${types.map(([v, l], i) => `<button type="button" class="act-type ${i === 0 ? 'selected' : ''}" data-type="${v}">${l}</button>`).join('')}
+    </div>
+    <label for="act-note">O que aconteceu?</label>
+    <textarea id="act-note" rows="2" placeholder="Ex.: Falei com o decisor, pediu proposta até sexta"></textarea>
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;" />
+    <label for="act-next">Próximo passo <span class="muted">(não deixe o lead esfriar!)</span></label>
+    <input id="act-next" placeholder="Ex.: Enviar proposta" />
+    <label for="act-next-at">Quando?</label>
+    <input id="act-next-at" type="date" value="${tomorrowStr()}" />
+    <button class="btn mt" id="act-save" style="width:100%;">Salvar e agendar próximo passo</button>
+  `);
+  let type = 'call';
+  $('act-types').querySelectorAll('.act-type').forEach((b) =>
+    b.addEventListener('click', () => {
+      type = b.dataset.type;
+      $('act-types').querySelectorAll('.act-type').forEach((x) => x.classList.remove('selected'));
+      b.classList.add('selected');
+    }));
+  $('act-save').addEventListener('click', async () => {
+    $('act-save').disabled = true;
+    const nextAt = $('act-next-at').value;
+    await api(`/api/deals/${dealId}/activity`, {
+      method: 'POST',
+      body: {
+        type,
+        note: $('act-note').value,
+        next_action: $('act-next').value,
+        next_action_at: nextAt ? `${nextAt}T09:00` : null,
+      },
     });
+    closeModal();
+    await refreshAll();
   });
 }
 
-async function loadServices() {
-  const rows = await api('/api/services');
-  const body = document.getElementById('svc-body');
-  body.innerHTML = '';
-  for (const s of rows) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${escapeHtml(s.name)}</td>
-      <td>${s.duration_min} min</td>
-      <td>${money(s.price_cents)}</td>
-      <td><span class="tag ${s.active ? 'confirmed' : 'canceled'}">${s.active ? 'Ativo' : 'Inativo'}</span></td>
-      <td>
-        <button class="btn ghost sm" data-toggle="${s.id}" data-active="${s.active}">${s.active ? 'Desativar' : 'Ativar'}</button>
-        <button class="btn danger sm" data-del="${s.id}">Excluir</button>
-      </td>`;
-    body.appendChild(tr);
+/* ---------------- New deal modal ---------------- */
+function openDealModal() {
+  const contactOpts = ['<option value="">— sem contato —</option>']
+    .concat(contacts.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}${c.company ? ` (${escapeHtml(c.company)})` : ''}</option>`))
+    .join('');
+  const stageOpts = stages
+    .filter((s) => s.kind === 'open')
+    .map((s, i) => `<option value="${s.id}" ${i === 0 ? 'selected' : ''}>${escapeHtml(s.name)}</option>`)
+    .join('');
+  openModal('Novo negócio', `
+    <label for="d-title">Título do negócio</label>
+    <input id="d-title" placeholder="Ex.: Venda recorrente — ACME" required />
+    <div class="field-row">
+      <div><label for="d-value">Valor (R$)</label><input id="d-value" type="number" min="0" step="0.01" value="0" /></div>
+      <div><label for="d-stage">Etapa</label><select id="d-stage">${stageOpts}</select></div>
+    </div>
+    <label for="d-contact">Contato</label>
+    <select id="d-contact">${contactOpts}</select>
+    <label for="d-next">Próximo passo <span class="muted">(opcional)</span></label>
+    <input id="d-next" placeholder="Ex.: Ligar para apresentar" />
+    <input id="d-next-at" type="date" class="mt" />
+    <div id="d-alert" class="hidden"></div>
+    <button class="btn mt" id="d-save" style="width:100%;">Criar negócio</button>
+  `);
+  $('d-save').addEventListener('click', async () => {
+    const title = $('d-title').value.trim();
+    if (!title) { $('d-alert').className = 'alert error'; $('d-alert').textContent = 'Informe um título.'; return; }
+    $('d-save').disabled = true;
+    const nextAt = $('d-next-at').value;
+    await api('/api/deals', {
+      method: 'POST',
+      body: {
+        title,
+        value_cents: Math.round(Number($('d-value').value) * 100),
+        stage_id: Number($('d-stage').value),
+        contact_id: $('d-contact').value ? Number($('d-contact').value) : null,
+        next_action: $('d-next').value || null,
+        next_action_at: nextAt ? `${nextAt}T09:00` : null,
+      },
+    });
+    closeModal();
+    await refreshAll();
+    switchTab('pipeline');
+  });
+}
+$('new-deal').addEventListener('click', openDealModal);
+
+/* ---------------- Pipeline (kanban) ---------------- */
+async function loadBoard() {
+  const board = await api('/api/deals/board');
+  const el = $('board');
+  el.innerHTML = '';
+  for (const col of board) {
+    const column = document.createElement('div');
+    column.className = 'column';
+    column.dataset.stageId = col.id;
+    column.innerHTML = `
+      <div class="column-head">
+        <span class="name">${escapeHtml(col.name)}</span>
+        <span class="total">${col.deals.length} · ${money(col.totalCents)}</span>
+      </div>
+      <div class="column-body"></div>`;
+    const body = column.querySelector('.column-body');
+    if (!col.deals.length) {
+      body.innerHTML = '<div class="column-empty">vazio</div>';
+    } else {
+      for (const d of col.deals) {
+        const who = [d.contact_name, d.contact_company].filter(Boolean).join(' · ');
+        const flag = d.followUp.needs ? (d.followUp.reason === 'due' ? 'flag-due' : 'flag-cold') : '';
+        const card = document.createElement('div');
+        card.className = `deal-card ${flag}`;
+        card.draggable = true;
+        card.dataset.id = d.id;
+        card.innerHTML = `
+          <div class="title">${escapeHtml(d.title)}</div>
+          ${who ? `<div class="meta">${escapeHtml(who)}</div>` : ''}
+          ${d.next_action ? `<div class="meta">👉 ${escapeHtml(d.next_action)}${d.next_action_at ? ` (${fmtDate(d.next_action_at)})` : ''}</div>` : ''}
+          <div class="value">${money(d.value_cents)}</div>`;
+        card.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', d.id));
+        card.addEventListener('click', () => openActivityModal(d.id));
+        body.appendChild(card);
+      }
+    }
+    column.addEventListener('dragover', (e) => { e.preventDefault(); column.classList.add('dragover'); });
+    column.addEventListener('dragleave', () => column.classList.remove('dragover'));
+    column.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      column.classList.remove('dragover');
+      const id = e.dataTransfer.getData('text/plain');
+      await api(`/api/deals/${id}/stage`, { method: 'PATCH', body: { stage_id: col.id } });
+      await refreshAll();
+    });
+    el.appendChild(column);
   }
-  body.querySelectorAll('[data-toggle]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      await api(`/api/services/${btn.dataset.toggle}`, {
-        method: 'PATCH',
-        body: { active: btn.dataset.active === '1' ? 0 : 1 },
-      });
-      loadServices();
-    }),
-  );
-  body.querySelectorAll('[data-del]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('Excluir este serviço?')) return;
-      await api(`/api/services/${btn.dataset.del}`, { method: 'DELETE' });
-      loadServices();
-    }),
-  );
 }
 
-document.getElementById('svc-form').addEventListener('submit', async (e) => {
+/* ---------------- Contacts ---------------- */
+async function loadContacts() {
+  contacts = await api('/api/contacts');
+  const body = $('contacts-body');
+  body.innerHTML = '';
+  if (!contacts.length) {
+    body.innerHTML = '<tr><td colspan="5" class="muted">Nenhum contato ainda.</td></tr>';
+    return;
+  }
+  for (const c of contacts) {
+    const contactInfo = c.email || c.phone || '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(c.name)}</td>
+      <td>${escapeHtml(c.company || '—')}</td>
+      <td>${escapeHtml(contactInfo)}</td>
+      <td>${c.open_deals}</td>
+      <td><button class="btn danger sm" data-del="${c.id}">Excluir</button></td>`;
+    body.appendChild(tr);
+  }
+  body.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm('Excluir este contato? Os negócios ligados a ele ficam sem contato.')) return;
+      await api(`/api/contacts/${b.dataset.del}`, { method: 'DELETE' });
+      await loadContacts();
+    }));
+}
+$('contact-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  await api('/api/services', {
+  await api('/api/contacts', {
     method: 'POST',
     body: {
-      name: document.getElementById('svc-name').value,
-      duration_min: Number(document.getElementById('svc-dur').value),
-      price_cents: Math.round(Number(document.getElementById('svc-price').value) * 100),
+      name: $('c-name').value,
+      company: $('c-company').value,
+      email: $('c-email').value,
+      phone: $('c-phone').value,
     },
   });
   e.target.reset();
-  document.getElementById('svc-dur').value = 30;
-  document.getElementById('svc-price').value = 0;
-  loadServices();
+  await loadContacts();
 });
 
-async function loadHours() {
-  const rows = await api('/api/availability');
-  const byDay = {};
-  for (const r of rows) byDay[r.weekday] = r;
-  const form = document.getElementById('hours-form');
-  form.innerHTML = '';
-  for (let d = 0; d < 7; d++) {
-    const open = byDay[d];
-    const row = document.createElement('div');
-    row.className = 'field-row';
-    row.style.cssText = 'align-items:center; margin-bottom:8px;';
-    row.innerHTML = `
-      <div style="flex:0 0 150px;">
-        <label style="margin:0; display:flex; align-items:center; gap:8px;">
-          <input type="checkbox" style="width:auto;" data-day="${d}" ${open ? 'checked' : ''} />
-          ${WEEKDAYS[d]}
-        </label>
-      </div>
-      <div><input type="time" data-start="${d}" value="${open ? open.start_time : '09:00'}" /></div>
-      <div><input type="time" data-end="${d}" value="${open ? open.end_time : '18:00'}" /></div>`;
-    form.appendChild(row);
-  }
-}
-
-document.getElementById('save-hours').addEventListener('click', async () => {
-  const hours = [];
-  for (let d = 0; d < 7; d++) {
-    const checked = document.querySelector(`[data-day="${d}"]`).checked;
-    if (!checked) continue;
-    hours.push({
-      weekday: d,
-      start_time: document.querySelector(`[data-start="${d}"]`).value,
-      end_time: document.querySelector(`[data-end="${d}"]`).value,
-    });
-  }
-  try {
-    await api('/api/availability', { method: 'PUT', body: { hours } });
-    const saved = document.getElementById('hours-saved');
-    saved.classList.remove('hidden');
-    setTimeout(() => saved.classList.add('hidden'), 2000);
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
+/* ---------------- Plan ---------------- */
 async function loadPlan() {
-  const detail = document.getElementById('plan-detail');
-  const actions = document.getElementById('plan-actions');
-  const note = document.getElementById('stripe-note');
   const status = await api('/api/billing/status');
-
+  const detail = $('plan-detail');
+  const actions = $('plan-actions');
   if (me.planStatus === 'active') {
     detail.textContent = 'Sua assinatura está ativa. Obrigado! 🎉';
     actions.innerHTML = '';
   } else {
     detail.innerHTML = me.subscriptionActive
-      ? `Você está no período de teste. Plano: <strong>${me.planPriceLabel}</strong>.`
-      : `Seu teste acabou. Assine por <strong>${me.planPriceLabel}</strong> para reativar.`;
+      ? `Você está no teste grátis. Plano: <strong>${me.planPriceLabel}</strong>.`
+      : `Seu teste acabou. Assine por <strong>${me.planPriceLabel}</strong> para continuar.`;
     actions.innerHTML = `<button class="btn" id="subscribe">Assinar agora — ${me.planPriceLabel}</button>`;
-    document.getElementById('subscribe').addEventListener('click', async (e) => {
+    $('subscribe').addEventListener('click', async (e) => {
       e.target.disabled = true;
       const { url } = await api('/api/billing/checkout', { method: 'POST' });
       window.location.href = url;
     });
   }
-  note.textContent = status.stripeEnabled
+  $('stripe-note').textContent = status.stripeEnabled
     ? 'Pagamento processado com segurança via Stripe.'
     : 'Modo demonstração: o Stripe não está configurado, então a assinatura é ativada localmente para teste.';
 }
 
-// Tabs
+/* ---------------- Tabs ---------------- */
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === `panel-${name}`));
+}
 document.querySelectorAll('.tab').forEach((tab) =>
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
-  }),
-);
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab)));
 
-document.getElementById('copy-link').addEventListener('click', async () => {
-  await navigator.clipboard.writeText(me.bookingUrl);
-  const btn = document.getElementById('copy-link');
-  btn.textContent = 'Copiado!';
-  setTimeout(() => (btn.textContent = 'Copiar'), 1500);
-});
-
-document.getElementById('logout').addEventListener('click', async () => {
+$('logout').addEventListener('click', async () => {
   await api('/api/auth/logout', { method: 'POST' });
   window.location.href = '/';
 });
 
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
-  );
+async function refreshAll() {
+  await Promise.all([loadStats(), loadToday(), loadBoard(), loadContacts()]);
 }
 
-// Show billing return messages.
+/* ---------------- Init ---------------- */
 const params = new URLSearchParams(location.search);
 if (params.get('billing') === 'success' || params.get('billing') === 'stub-activated') {
-  document.getElementById('banner').innerHTML =
-    '<div class="alert ok">Assinatura ativada com sucesso! 🎉</div>';
+  $('banner').innerHTML = '<div class="alert ok">Assinatura ativada com sucesso! 🎉</div>';
 }
 
 await loadMe();
-await Promise.all([loadStats(), loadAppointments(), loadServices(), loadHours(), loadPlan()]);
+stages = await api('/api/pipeline/stages');
+await Promise.all([loadStats(), loadToday(), loadBoard(), loadContacts(), loadPlan()]);

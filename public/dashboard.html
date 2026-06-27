@@ -3,88 +3,79 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Painel — AgendaPro</title>
+  <title>Painel — PipeSolo</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
   <div class="container" style="padding-top:18px; padding-bottom:60px;">
     <div class="nav">
-      <a class="brand" href="/">Agenda<span>Pro</span></a>
-      <button id="logout" class="btn ghost sm">Sair</button>
+      <a class="brand" href="/">Pipe<span>Solo</span></a>
+      <div>
+        <button id="new-deal" class="btn sm">+ Novo negócio</button>
+        <button id="logout" class="btn ghost sm">Sair</button>
+      </div>
     </div>
 
     <div id="banner"></div>
 
     <div class="dash-head">
       <div>
-        <h2 id="biz-name" style="margin:0;">…</h2>
+        <h2 id="rep-name" style="margin:0;">…</h2>
         <p class="muted" id="plan-line" style="margin:4px 0 0;"></p>
       </div>
-      <a id="view-booking" class="btn secondary" target="_blank">Ver minha página ↗</a>
     </div>
 
-    <div class="card mt">
-      <strong>Seu link de agendamento</strong>
-      <div class="copy-box mt">
-        <code id="booking-url">…</code>
-        <button id="copy-link" class="btn sm">Copiar</button>
-      </div>
-      <p class="muted" style="margin:8px 0 0; font-size:.85rem;">Compartilhe no WhatsApp, Instagram ou no seu site.</p>
-    </div>
-
-    <div class="stats">
-      <div class="stat"><div class="n" id="stat-upcoming">0</div><div class="l">Próximos agendamentos</div></div>
-      <div class="stat"><div class="n" id="stat-total">0</div><div class="l">Total confirmados</div></div>
-      <div class="stat"><div class="n" id="stat-revenue">R$ 0</div><div class="l">Receita estimada</div></div>
+    <div class="stats" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="stat"><div class="n" id="stat-follow">0</div><div class="l">Follow-ups para hoje</div></div>
+      <div class="stat"><div class="n" id="stat-open">0</div><div class="l">Negócios em aberto</div></div>
+      <div class="stat"><div class="n" id="stat-value">R$ 0</div><div class="l">Valor no pipeline</div></div>
+      <div class="stat"><div class="n" id="stat-won">R$ 0</div><div class="l">Ganho neste mês</div></div>
     </div>
 
     <div class="tabs">
-      <button class="tab active" data-tab="appts">Agendamentos</button>
-      <button class="tab" data-tab="services">Serviços</button>
-      <button class="tab" data-tab="hours">Horários</button>
+      <button class="tab active" data-tab="today">🎯 Hoje</button>
+      <button class="tab" data-tab="pipeline">📊 Pipeline</button>
+      <button class="tab" data-tab="contacts">👥 Contatos</button>
       <button class="tab" data-tab="plan">Assinatura</button>
     </div>
 
-    <!-- Appointments -->
-    <section class="panel active" id="panel-appts">
-      <div id="appts-empty" class="muted hidden">Nenhum agendamento ainda. Compartilhe seu link!</div>
-      <table id="appts-table" class="hidden">
-        <thead><tr><th>Quando</th><th>Cliente</th><th>Serviço</th><th>Contato</th><th>Status</th><th></th></tr></thead>
-        <tbody id="appts-body"></tbody>
-      </table>
+    <!-- Hoje: follow-up queue -->
+    <section class="panel active" id="panel-today">
+      <p class="muted">Quem você precisa perseguir agora — em ordem de urgência.</p>
+      <div id="today-empty" class="card center muted hidden">
+        🎉 Tudo em dia! Nenhum follow-up pendente. Bom trabalho.
+      </div>
+      <div id="today-list"></div>
     </section>
 
-    <!-- Services -->
-    <section class="panel" id="panel-services">
+    <!-- Pipeline: kanban -->
+    <section class="panel" id="panel-pipeline">
+      <div id="board" class="board"></div>
+    </section>
+
+    <!-- Contatos -->
+    <section class="panel" id="panel-contacts">
       <div class="card" style="margin-bottom:18px;">
-        <strong>Adicionar serviço</strong>
-        <form id="svc-form" class="mt">
+        <strong>Adicionar contato</strong>
+        <form id="contact-form" class="mt">
           <div class="field-row">
-            <div><label>Nome</label><input id="svc-name" placeholder="Ex.: Corte de cabelo" required /></div>
-            <div><label>Duração (min)</label><input id="svc-dur" type="number" value="30" min="5" max="480" /></div>
-            <div><label>Preço (R$)</label><input id="svc-price" type="number" value="0" min="0" step="0.01" /></div>
+            <div><label>Nome</label><input id="c-name" required /></div>
+            <div><label>Empresa</label><input id="c-company" /></div>
           </div>
-          <button class="btn mt" type="submit">Adicionar</button>
+          <div class="field-row">
+            <div><label>E-mail</label><input id="c-email" type="email" /></div>
+            <div><label>Telefone</label><input id="c-phone" /></div>
+          </div>
+          <button class="btn mt" type="submit">Adicionar contato</button>
         </form>
       </div>
       <table>
-        <thead><tr><th>Serviço</th><th>Duração</th><th>Preço</th><th>Status</th><th></th></tr></thead>
-        <tbody id="svc-body"></tbody>
+        <thead><tr><th>Nome</th><th>Empresa</th><th>Contato</th><th>Negócios abertos</th><th></th></tr></thead>
+        <tbody id="contacts-body"></tbody>
       </table>
     </section>
 
-    <!-- Hours -->
-    <section class="panel" id="panel-hours">
-      <div class="card">
-        <strong>Horário de funcionamento</strong>
-        <p class="muted" style="font-size:.85rem;">Marque os dias abertos e defina o intervalo. Clientes só conseguem agendar dentro desses horários.</p>
-        <form id="hours-form" class="mt"></form>
-        <button id="save-hours" class="btn mt">Salvar horários</button>
-        <span id="hours-saved" class="muted hidden" style="margin-left:10px;">✓ Salvo</span>
-      </div>
-    </section>
-
-    <!-- Plan -->
+    <!-- Assinatura -->
     <section class="panel" id="panel-plan">
       <div class="card">
         <h3 style="margin-top:0;">Sua assinatura</h3>
@@ -93,6 +84,17 @@
         <p class="muted" style="font-size:.8rem; margin-top:18px;" id="stripe-note"></p>
       </div>
     </section>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal card">
+      <div class="modal-head">
+        <h3 id="modal-title">…</h3>
+        <button id="modal-close" class="btn ghost sm">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
   </div>
 
   <script type="module" src="/js/dashboard.js"></script>

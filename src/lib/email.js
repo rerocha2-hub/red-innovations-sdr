@@ -13,7 +13,7 @@ if (config.smtp.enabled) {
 
 /**
  * Send an email. When SMTP is not configured (the default), the message is
- * logged to the console so the automation flow is observable in development.
+ * logged to the console so the flow is observable in development.
  */
 export async function sendMail({ to, subject, text, html }) {
   if (!to) return { skipped: true };
@@ -32,36 +32,36 @@ export async function sendMail({ to, subject, text, html }) {
   });
 }
 
-export function welcomeEmail(business, bookingUrl) {
+export function welcomeEmail(rep) {
   return {
-    to: business.owner_email,
-    subject: 'Bem-vindo(a) ao AgendaPro 🎉',
+    to: rep.email,
+    subject: 'Bem-vindo(a) ao PipeSolo 🚀',
     text:
-      `Olá! Sua conta "${business.name}" está pronta.\n\n` +
-      `Seu teste grátis vai até ${new Date(business.trial_ends_at).toLocaleDateString('pt-BR')}.\n` +
-      `Compartilhe seu link de agendamento com os clientes:\n${bookingUrl}\n`,
+      `Olá ${rep.name}! Sua conta está pronta.\n\n` +
+      `Seu teste grátis vai até ${new Date(rep.trial_ends_at).toLocaleDateString('pt-BR')}.\n` +
+      `Dica de ouro: cadastre seus negócios em aberto e deixe o PipeSolo te avisar quem perseguir todo dia.\n` +
+      `Acesse: ${config.appUrl}/dashboard\n`,
   };
 }
 
-export function bookingConfirmationEmail(appt, business, service) {
-  const when = new Date(appt.starts_at).toLocaleString('pt-BR');
+/**
+ * Daily digest of deals that need a follow-up. Triggered manually or by a cron
+ * job hitting POST /api/digest (see routes/digest.js). Kept here so the message
+ * format lives next to the others.
+ */
+export function followUpDigestEmail(rep, queue) {
+  const lines = queue
+    .slice(0, 10)
+    .map((q) => {
+      const tag = q.reason === 'due' ? '⏰ ação marcada' : '❄️ esfriando';
+      return `• ${q.deal.title} — ${tag}${q.deal.next_action ? ` (${q.deal.next_action})` : ''}`;
+    })
+    .join('\n');
   return {
-    to: appt.customer_email,
-    subject: `Agendamento confirmado em ${business.name}`,
+    to: rep.email,
+    subject: `Você tem ${queue.length} follow-up(s) para hoje`,
     text:
-      `Olá ${appt.customer_name}, seu horário está confirmado!\n\n` +
-      `Serviço: ${service.name}\nData: ${when}\nLocal: ${business.name}\n`,
-  };
-}
-
-export function ownerNotificationEmail(appt, business, service) {
-  const when = new Date(appt.starts_at).toLocaleString('pt-BR');
-  return {
-    to: business.owner_email,
-    subject: `Novo agendamento: ${appt.customer_name}`,
-    text:
-      `Você recebeu um novo agendamento!\n\n` +
-      `Cliente: ${appt.customer_name}\nContato: ${appt.customer_email || appt.customer_phone || '—'}\n` +
-      `Serviço: ${service.name}\nData: ${when}\n`,
+      `Bom dia, ${rep.name}! Estes negócios precisam de você hoje:\n\n${lines}\n\n` +
+      `Abra o PipeSolo e feche mais: ${config.appUrl}/dashboard\n`,
   };
 }

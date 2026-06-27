@@ -14,25 +14,23 @@ export const billingEnabled = Boolean(stripe);
  * the plan immediately and returns a local success URL — so the whole flow is
  * demonstrable without real keys.
  */
-export async function createCheckout(business) {
+export async function createCheckout(rep) {
   if (!stripe) {
-    db.prepare("UPDATE businesses SET plan_status = 'active' WHERE id = ?").run(
-      business.id,
-    );
+    db.prepare("UPDATE reps SET plan_status = 'active' WHERE id = ?").run(rep.id);
     return { url: `${config.appUrl}/dashboard?billing=stub-activated`, stub: true };
   }
 
-  let customerId = business.stripe_customer_id;
+  let customerId = rep.stripe_customer_id;
   if (!customerId) {
     const customer = await stripe.customers.create({
-      email: business.owner_email,
-      name: business.name,
-      metadata: { business_id: String(business.id) },
+      email: rep.email,
+      name: rep.name,
+      metadata: { rep_id: String(rep.id) },
     });
     customerId = customer.id;
-    db.prepare('UPDATE businesses SET stripe_customer_id = ? WHERE id = ?').run(
+    db.prepare('UPDATE reps SET stripe_customer_id = ? WHERE id = ?').run(
       customerId,
-      business.id,
+      rep.id,
     );
   }
 
@@ -42,7 +40,7 @@ export async function createCheckout(business) {
     line_items: [{ price: config.stripe.priceId, quantity: 1 }],
     success_url: `${config.appUrl}/dashboard?billing=success`,
     cancel_url: `${config.appUrl}/dashboard?billing=canceled`,
-    metadata: { business_id: String(business.id) },
+    metadata: { rep_id: String(rep.id) },
   });
   return { url: session.url, stub: false };
 }
@@ -67,7 +65,8 @@ export function applySubscriptionStatus(customerId, status) {
     unpaid: 'past_due',
   };
   const plan = map[status] || 'past_due';
-  db.prepare(
-    'UPDATE businesses SET plan_status = ? WHERE stripe_customer_id = ?',
-  ).run(plan, customerId);
+  db.prepare('UPDATE reps SET plan_status = ? WHERE stripe_customer_id = ?').run(
+    plan,
+    customerId,
+  );
 }

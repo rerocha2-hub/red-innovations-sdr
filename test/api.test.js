@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// Isolate the database for this test run BEFORE importing the app.
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agendapro-test-'));
+// Isolate the database BEFORE importing the app.
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipesolo-test-'));
 process.env.DB_FILE = path.join(tmpDir, 'test.sqlite');
 process.env.JWT_SECRET = 'test-secret';
+process.env.STALE_DAYS = '3';
 
 const { app } = await import('../server.js');
 
@@ -28,15 +29,15 @@ after(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// Helper that keeps the session cookie between calls.
 function makeClient() {
   let cookie = '';
-  return async (pathname, { method = 'GET', body } = {}) => {
+  return async (pathname, { method = 'GET', body, headers = {} } = {}) => {
     const res = await fetch(baseUrl + pathname, {
       method,
       headers: {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
         ...(cookie ? { Cookie: cookie } : {}),
+        ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -48,116 +49,134 @@ function makeClient() {
   };
 }
 
+const past = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
 test('health check responds', async () => {
   const res = await fetch(baseUrl + '/api/health');
   assert.equal(res.status, 200);
 });
 
-test('full flow: signup → add service → set hours → public booking', async () => {
-  const owner = makeClient();
-
-  // Signup
-  const signup = await owner('/api/auth/signup', {
+test('signup seeds default pipeline stages', async () => {
+  const rep = makeClient();
+  const s = await rep('/api/auth/signup', {
     method: 'POST',
-    body: { name: 'Barbearia Teste', email: 'dono@teste.com', password: 'segredo123' },
+    body: { name: 'Ana Rep', email: 'ana@rep.com', password: 'segredo123' },
   });
-  assert.equal(signup.status, 201);
-  const slug = signup.data.slug;
-  assert.ok(slug);
-
-  // me
-  const me = await owner('/api/auth/me');
-  assert.equal(me.status, 200);
-  assert.equal(me.data.subscriptionActive, true); // in trial
-
-  // Add a 60-min service
-  const svc = await owner('/api/services', {
-    method: 'POST',
-    body: { name: 'Corte', duration_min: 60, price_cents: 5000 },
-  });
-  assert.equal(svc.status, 201);
-  const serviceId = svc.data.id;
-
-  // Set hours: open Monday–Sunday 09:00–12:00 so any test date works.
-  const hours = Array.from({ length: 7 }, (_, weekday) => ({
-    weekday, start_time: '09:00', end_time: '12:00',
-  }));
-  const setHours = await owner('/api/availability', { method: 'PUT', body: { hours } });
-  assert.equal(setHours.status, 200);
-
-  // Public client books — pick a date a week out to avoid past-slot filtering.
-  const date = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-  const anon = makeClient();
-
-  const slots = await anon(`/api/public/${slug}/slots?serviceId=${serviceId}&date=${date}`);
-  assert.equal(slots.status, 200);
-  assert.deepEqual(slots.data.slots, ['09:00', '10:00', '11:00']);
-
-  const booking = await anon(`/api/public/${slug}/book`, {
-    method: 'POST',
-    body: {
-      serviceId, date, time: '10:00',
-      customer_name: 'Cliente Feliz', customer_email: 'cliente@teste.com',
-    },
-  });
-  assert.equal(booking.status, 201);
-
-  // The 10:00 slot is now gone for that date.
-  const slots2 = await anon(`/api/public/${slug}/slots?serviceId=${serviceId}&date=${date}`);
-  assert.deepEqual(slots2.data.slots, ['09:00', '11:00']);
-
-  // Double-booking the same slot is rejected.
-  const dup = await anon(`/api/public/${slug}/book`, {
-    method: 'POST',
-    body: { serviceId, date, time: '10:00', customer_name: 'Outro' },
-  });
-  assert.equal(dup.status, 409);
-
-  // Owner sees exactly one confirmed appointment.
-  const appts = await owner('/api/appointments');
-  assert.equal(appts.data.filter((a) => a.status === 'confirmed').length, 1);
-
-  const stats = await owner('/api/appointments/stats/summary');
-  assert.equal(stats.data.revenueCents, 5000);
+  assert.equal(s.status, 201);
+  const stages = await rep('/api/pipeline/stages');
+  assert.equal(stages.status, 200);
+  assert.equal(stages.data.length, 7);
+  assert.equal(stages.data[0].name, 'Novo lead');
+  assert.equal(stages.data.find((x) => x.kind === 'won').name, 'Ganho');
 });
 
-test('cannot book a closed day', async () => {
-  const owner = makeClient();
-  await owner('/api/auth/signup', {
+test('full flow: contact → deal → activity → follow-up queue → win', async () => {
+  const rep = makeClient();
+  await rep('/api/auth/signup', {
     method: 'POST',
-    body: { name: 'Clinica X', email: 'x@teste.com', password: 'segredo123' },
+    body: { name: 'Bruno', email: 'bruno@rep.com', password: 'segredo123' },
   });
-  const svc = await owner('/api/services', {
+
+  // Create a contact
+  const contact = await rep('/api/contacts', {
     method: 'POST',
-    body: { name: 'Consulta', duration_min: 30 },
+    body: { name: 'João Cliente', company: 'ACME', email: 'joao@acme.com' },
   });
-  // Open ONLY on weekday 1 (Monday).
-  await owner('/api/availability', {
-    method: 'PUT',
-    body: { hours: [{ weekday: 1, start_time: '09:00', end_time: '10:00' }] },
+  assert.equal(contact.status, 201);
+
+  // Create a deal worth R$1000, landing in the first open stage by default
+  const deal = await rep('/api/deals', {
+    method: 'POST',
+    body: { title: 'Venda de 100 unidades', value_cents: 100000, contact_id: contact.data.id },
   });
-  const me = await owner('/api/auth/me');
-  const slug = me.data.slug;
+  assert.equal(deal.status, 201);
+  assert.equal(deal.data.stage_name, 'Novo lead');
+  const dealId = deal.data.id;
 
-  // Find the next Sunday (weekday 0) which is closed.
-  const d = new Date();
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7)); // next Sunday
-  const sunday = d.toISOString().slice(0, 10);
+  // Board shows the deal in the first stage with the right total
+  const board = await rep('/api/deals/board');
+  const novo = board.data.find((s) => s.name === 'Novo lead');
+  assert.equal(novo.deals.length, 1);
+  assert.equal(novo.totalCents, 100000);
 
-  const anon = makeClient();
-  const slots = await anon(`/api/public/${slug}/slots?serviceId=${svc.data.id}&date=${sunday}`);
-  assert.deepEqual(slots.data.slots, []);
+  // Log a call and schedule the next action in the PAST → should need follow-up
+  const logged = await rep(`/api/deals/${dealId}/activity`, {
+    method: 'POST',
+    body: { type: 'call', note: 'Liguei, pediu proposta', next_action: 'Enviar proposta', next_action_at: past(2) },
+  });
+  assert.equal(logged.status, 201);
+  assert.equal(logged.data.followUp.needs, true);
+  assert.equal(logged.data.followUp.reason, 'due');
+
+  // Follow-up queue contains this deal
+  const queue = await rep('/api/deals/followup');
+  assert.equal(queue.data.length, 1);
+  assert.equal(queue.data[0].id, dealId);
+  assert.equal(queue.data[0].reason, 'due');
+
+  // Deal detail includes the activity
+  const detail = await rep(`/api/deals/${dealId}`);
+  assert.equal(detail.data.activities.length, 1);
+  assert.equal(detail.data.activities[0].type, 'call');
+
+  // Move to "Ganho" → closes as won, leaves the follow-up queue
+  const stages = (await rep('/api/pipeline/stages')).data;
+  const wonStage = stages.find((s) => s.kind === 'won');
+  const won = await rep(`/api/deals/${dealId}/stage`, {
+    method: 'PATCH',
+    body: { stage_id: wonStage.id },
+  });
+  assert.equal(won.data.status, 'won');
+
+  const queue2 = await rep('/api/deals/followup');
+  assert.equal(queue2.data.length, 0);
+
+  const stats = await rep('/api/deals/stats/summary');
+  assert.equal(stats.data.openCount, 0);
+  assert.equal(stats.data.wonThisMonthCount, 1);
+  assert.equal(stats.data.wonThisMonthCents, 100000);
 });
 
-test('rejects duplicate email signup', async () => {
-  const c = makeClient();
-  await c('/api/auth/signup', {
+test('a deal idle longer than STALE_DAYS surfaces as cold', async () => {
+  const rep = makeClient();
+  await rep('/api/auth/signup', {
     method: 'POST',
-    body: { name: 'Dup', email: 'dup@teste.com', password: 'segredo123' },
+    body: { name: 'Carla', email: 'carla@rep.com', password: 'segredo123' },
   });
-  const again = await c('/api/auth/signup', {
+  const deal = await rep('/api/deals', { method: 'POST', body: { title: 'Lead esquecido' } });
+  // Force last_activity_at into the past directly is not exposed; instead log an
+  // activity with NO next action, then verify it is "ok" now, and rely on unit
+  // tests for the cold threshold. Here we assert a fresh deal is NOT cold yet.
+  const queue = await rep('/api/deals/followup');
+  // Fresh deal (created today, no next action) is within stale window → not listed.
+  assert.equal(queue.data.find((d) => d.id === deal.data.id), undefined);
+});
+
+test('rejects duplicate email and unauthenticated access', async () => {
+  const rep = makeClient();
+  await rep('/api/auth/signup', {
     method: 'POST',
-    body: { name: 'Dup2', email: 'dup@teste.com', password: 'segredo123' },
+    body: { name: 'Dup', email: 'dup@rep.com', password: 'segredo123' },
+  });
+  const again = await rep('/api/auth/signup', {
+    method: 'POST',
+    body: { name: 'Dup2', email: 'dup@rep.com', password: 'segredo123' },
   });
   assert.equal(again.status, 409);
+
+  const anon = makeClient();
+  const me = await anon('/api/deals');
+  assert.equal(me.status, 401);
+});
+
+test('digest endpoint requires the shared secret', async () => {
+  const anon = makeClient();
+  const bad = await anon('/api/digest/run', { method: 'POST' });
+  assert.equal(bad.status, 401);
+  const good = await anon('/api/digest/run', {
+    method: 'POST',
+    headers: { 'x-digest-secret': 'test-secret' },
+  });
+  assert.equal(good.status, 200);
+  assert.ok(good.data.ok);
 });

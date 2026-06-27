@@ -12,9 +12,11 @@ export const config = {
   appUrl: process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`,
   jwtSecret: process.env.JWT_SECRET || 'dev-insecure-secret-change-me',
   trialDays: Number(process.env.TRIAL_DAYS) || 14,
-  planPriceLabel: process.env.PLAN_PRICE_LABEL || 'R$ 49/mês',
+  planPriceLabel: process.env.PLAN_PRICE_LABEL || 'R$ 29/mês',
+  // Quantos dias sem atividade até um negócio ser considerado "esfriando".
+  staleDays: Number(process.env.STALE_DAYS) || 3,
   dataDir: process.env.DB_FILE ? path.dirname(process.env.DB_FILE) : path.join(ROOT, 'data'),
-  dbFile: process.env.DB_FILE || path.join(ROOT, 'data', 'agendapro.sqlite'),
+  dbFile: process.env.DB_FILE || path.join(ROOT, 'data', 'pipesolo.sqlite'),
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     priceId: process.env.STRIPE_PRICE_ID || '',
@@ -26,7 +28,7 @@ export const config = {
     port: Number(process.env.SMTP_PORT) || 587,
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
-    from: process.env.MAIL_FROM || 'AgendaPro <no-reply@agendapro.app>',
+    from: process.env.MAIL_FROM || 'PipeSolo <no-reply@pipesolo.app>',
     enabled: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER),
   },
 };

@@ -131,3 +131,38 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: up
 .mt { margin-top: 16px; }
 .hidden { display: none !important; }
 footer { padding: 30px 0; color: var(--muted); font-size: .85rem; text-align: center; }
+
+/* Kanban board */
+.board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 12px; }
+.column { flex: 0 0 260px; background: #f1f5f9; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.column.dragover { background: #e0e7ff; border-color: var(--brand); }
+.column-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding: 0 4px; }
+.column-head .name { font-weight: 700; font-size: .9rem; }
+.column-head .total { color: var(--muted); font-size: .78rem; }
+.deal-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 11px; margin-bottom: 8px; cursor: grab; box-shadow: 0 1px 2px rgba(2,6,23,.04); }
+.deal-card:active { cursor: grabbing; }
+.deal-card .title { font-weight: 600; font-size: .92rem; }
+.deal-card .meta { color: var(--muted); font-size: .8rem; margin-top: 3px; }
+.deal-card .value { font-weight: 700; color: var(--brand-dark); font-size: .85rem; margin-top: 6px; }
+.deal-card.flag-due { border-left: 3px solid var(--danger); }
+.deal-card.flag-cold { border-left: 3px solid var(--warn); }
+.column-empty { color: var(--muted); font-size: .82rem; text-align: center; padding: 14px 0; }
+
+/* Follow-up "today" cards */
+.follow-card { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:10px; box-shadow: var(--shadow); }
+.follow-card .title { font-weight:700; }
+.follow-card .sub { color: var(--muted); font-size:.88rem; margin-top:2px; }
+.follow-card .next { font-size:.88rem; margin-top:6px; }
+.follow-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.badge { display:inline-block; padding:3px 9px; border-radius:999px; font-size:.74rem; font-weight:700; }
+.badge.due { background:#fee2e2; color:#b91c1c; }
+.badge.cold { background:#fffbeb; color:#b45309; border:1px solid #fde68a; }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(2,6,23,.45); display:flex; align-items:center; justify-content:center; padding:20px; z-index:50; }
+.modal { width: 100%; max-width: 460px; max-height: 90vh; overflow-y:auto; }
+.modal-head { display:flex; justify-content:space-between; align-items:center; }
+.modal-head h3 { margin:0; }
+.act-types { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.act-type { padding:7px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; cursor:pointer; font-size:.85rem; }
+.act-type.selected { background: var(--brand); color:#fff; border-color: var(--brand); }
