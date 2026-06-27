@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Criar conta — AgendaPro</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="container narrow" style="padding-top:48px;">
+    <div class="nav">
+      <a class="brand" href="/">Agenda<span>Pro</span></a>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0;">Criar conta grátis</h2>
+      <p class="muted">14 dias de teste. Sem cartão de crédito.</p>
+      <div id="alert" class="hidden"></div>
+      <form id="form">
+        <label for="name">Nome do seu negócio</label>
+        <input id="name" name="name" placeholder="Ex.: Clínica Bem Estar" required />
+        <label for="email">E-mail</label>
+        <input id="email" name="email" type="email" placeholder="voce@email.com" required />
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" placeholder="mínimo 6 caracteres" required />
+        <button class="btn" type="submit" style="width:100%; margin-top:18px;">Criar conta</button>
+      </form>
+      <p class="muted mt center">Já tem conta? <a href="/login.html">Entrar</a></p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { api, showAlert } from '/js/api.js';
+    const form = document.getElementById('form');
+    const alertEl = document.getElementById('alert');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      try {
+        await api('/api/auth/signup', {
+          method: 'POST',
+          body: {
+            name: form.name.value,
+            email: form.email.value,
+            password: form.password.value,
+          },
+        });
+        window.location.href = '/dashboard';
+      } catch (err) {
+        showAlert(alertEl, err.message);
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

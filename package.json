@@ -1,0 +1,27 @@
+{
+  "name": "agendapro",
+  "version": "1.0.0",
+  "description": "AgendaPro - Micro-SaaS de agendamento para pequenos negócios (clínicas, salões, restaurantes).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "seed": "node scripts/seed.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.14",
+    "stripe": "^16.8.0"
+  },
+  "license": "MIT"
+}

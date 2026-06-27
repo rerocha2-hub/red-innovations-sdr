@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agendar horário</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="container narrow" style="padding-top:36px; padding-bottom:60px;">
+    <div class="center">
+      <h1 id="biz-name" style="margin-bottom:4px;">…</h1>
+      <p class="muted">Escolha um serviço e horário para agendar.</p>
+    </div>
+
+    <div id="alert" class="hidden"></div>
+
+    <!-- Booking flow -->
+    <div id="flow" class="card mt hidden">
+      <label for="service">Serviço</label>
+      <select id="service"></select>
+
+      <label for="date">Data</label>
+      <input id="date" type="date" />
+
+      <div id="slots-wrap" class="mt">
+        <label>Horários disponíveis</label>
+        <div id="slots" class="slots"></div>
+        <p id="no-slots" class="muted hidden">Nenhum horário disponível nesta data. Tente outro dia.</p>
+      </div>
+
+      <div id="customer" class="mt hidden">
+        <hr style="border:none; border-top:1px solid var(--line); margin:20px 0;" />
+        <label for="cname">Seu nome</label>
+        <input id="cname" required />
+        <div class="field-row">
+          <div><label for="cemail">E-mail</label><input id="cemail" type="email" placeholder="para receber a confirmação" /></div>
+          <div><label for="cphone">Telefone</label><input id="cphone" placeholder="(opcional)" /></div>
+        </div>
+        <label for="cnotes">Observação</label>
+        <textarea id="cnotes" rows="2" placeholder="(opcional)"></textarea>
+        <button id="confirm" class="btn mt" style="width:100%;">Confirmar agendamento</button>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div id="done" class="card mt center hidden">
+      <div style="font-size:3rem;">✅</div>
+      <h2>Agendamento confirmado!</h2>
+      <p id="done-detail" class="muted"></p>
+      <button id="again" class="btn ghost mt">Fazer outro agendamento</button>
+    </div>
+  </div>
+
+  <script type="module" src="/js/book.js"></script>
+</body>
+</html>
